@@ -267,7 +267,7 @@ GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
 
 ---
 
-## 10. Automated Testing & Code Coverage (Jest)
+## 10. Automated Testing & Code Coverage (Jest) — 5 Bonus Points
 
 The project includes unit test suites verifying business invariants, vehicle & mechanic conflict prevention, and state machine transition rules.
 
@@ -283,13 +283,15 @@ npm run test:cov
 
 ---
 
-## 10. Core RESTful Endpoints Reference
+## 11. Core RESTful Endpoints Reference
 
 | Method | Endpoint | Access Role | Description |
 | :--- | :--- | :---: | :--- |
 | `POST` | `/auth/register` | Public | Register new user (`ADMIN`, `TECHNICIAN`) |
 | `POST` | `/auth/login` | Public | Authenticate user & receive JWT |
 | `GET` | `/auth/profile` | Authenticated | Retrieve current user profile |
+| `GET` | `/auth/github` | Public | OAuth 2.0: Initiate GitHub redirection |
+| `GET` | `/auth/github/callback` | Public | OAuth 2.0: GitHub callback & JWT issuance |
 | `GET` | `/vehicles` | Authenticated | List all fleet vehicles (optional `?status=`) |
 | `GET` | `/vehicles/:identifier` | Authenticated | Get vehicle by UUID or Plate |
 | `POST` | `/vehicles` | `ADMIN` | Register a new vehicle |
@@ -316,6 +318,6 @@ npm run test:cov
 
 ---
 
-## 11. Git Commit History & Best Practices
+## 12. Git Commit History & Best Practices
 
 All changes follow conventional commit standards (`feat:`, `fix:`, `test:`, `docs:`, `chore:`) to ensure clean git traceability.
