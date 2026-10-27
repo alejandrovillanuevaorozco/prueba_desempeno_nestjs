@@ -44,6 +44,9 @@ export class Maintenance {
   @Column({ type: 'timestamp with time zone' })
   scheduledDate: Date;
 
+  @Column({ type: 'decimal', precision: 4, scale: 2, default: 2.0 })
+  estimatedDurationHours: number;
+
   // Completion fields (required when status transitions to COMPLETED)
   @Column({ type: 'text', nullable: true })
   workDone?: string;

@@ -4,6 +4,7 @@ import {
   IsEnum,
   IsNotEmpty,
   IsNumber,
+  IsOptional,
   IsString,
   IsUUID,
   Min,
@@ -66,4 +67,14 @@ export class CreateMaintenanceDto {
   @IsDateString()
   @IsNotEmpty()
   scheduledDate: string;
+
+  @ApiProperty({
+    description: 'Estimated duration in hours for the maintenance task (default: 2.0 hours)',
+    example: 1.5,
+    required: false,
+  })
+  @IsNumber()
+  @Min(0.25)
+  @IsOptional()
+  estimatedDurationHours?: number;
 }

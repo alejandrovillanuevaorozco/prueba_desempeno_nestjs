@@ -231,6 +231,85 @@ describe('MaintenancesService — Domain Rules & State Machine', () => {
 
       await expect(service.create(validDto)).rejects.toThrow(ConflictException);
     });
+
+    it('should allow scheduling when mechanic has an existing job that does not overlap in time (Section 3.10.d)', async () => {
+      // Existing job: 7:30 to 9:00 (1.5 hours)
+      // New job starts at 9:00 (09:00:00) -> non-overlapping!
+      const nonOverlappingDto: CreateMaintenanceDto = {
+        ...validDto,
+        scheduledDate: '2026-11-01T09:00:00.000Z',
+        estimatedDurationHours: 1.5,
+      };
+
+      mockEntityManager.findOne.mockImplementation(async (entityClass) => {
+        if (entityClass === Vehicle) {
+          return { id: 'v-1', plate: 'ABC123', mileage: 45000, status: VehicleStatus.AVAILABLE };
+        }
+        if (entityClass === Mechanic) {
+          return { id: 'm-1', name: 'Carlos', status: Status.ACTIVE };
+        }
+        if (entityClass === Workshop) {
+          return { id: 'w-1', name: 'Taller Central', status: Status.ACTIVE };
+        }
+        return null; // vehicle has no active maintenance
+      });
+
+      // Mechanic has existing maintenance from 7:30 to 9:00
+      mockEntityManager.find.mockImplementation(async (entityClass) => {
+        if (entityClass === Maintenance) {
+          return [
+            {
+              id: 'm-prior',
+              scheduledDate: new Date('2026-11-01T07:30:00.000Z'),
+              estimatedDurationHours: 1.5, // ends at 9:00
+              status: MaintenanceStatus.SCHEDULED,
+            },
+          ];
+        }
+        return [];
+      });
+
+      const result = await service.create(nonOverlappingDto);
+      expect(result).toBeDefined();
+      expect(result.status).toBe(MaintenanceStatus.SCHEDULED);
+    });
+
+    it('should reject scheduling when mechanic schedule overlaps in time (Section 3.10.c: 7:30-9:00, new at 8:00)', async () => {
+      const overlappingDto: CreateMaintenanceDto = {
+        ...validDto,
+        scheduledDate: '2026-11-01T08:00:00.000Z',
+        estimatedDurationHours: 1.5,
+      };
+
+      mockEntityManager.findOne.mockImplementation(async (entityClass) => {
+        if (entityClass === Vehicle) {
+          return { id: 'v-1', plate: 'ABC123', mileage: 45000, status: VehicleStatus.AVAILABLE };
+        }
+        if (entityClass === Mechanic) {
+          return { id: 'm-1', name: 'Carlos', status: Status.ACTIVE };
+        }
+        if (entityClass === Workshop) {
+          return { id: 'w-1', name: 'Taller Central', status: Status.ACTIVE };
+        }
+        return null;
+      });
+
+      mockEntityManager.find.mockImplementation(async (entityClass) => {
+        if (entityClass === Maintenance) {
+          return [
+            {
+              id: 'm-prior',
+              scheduledDate: new Date('2026-11-01T07:30:00.000Z'),
+              estimatedDurationHours: 1.5, // ends at 9:00
+              status: MaintenanceStatus.SCHEDULED,
+            },
+          ];
+        }
+        return [];
+      });
+
+      await expect(service.create(overlappingDto)).rejects.toThrow(ConflictException);
+    });
   });
 
   describe('updateStatus() — State Machine Transitions & ACID Synchronization', () => {

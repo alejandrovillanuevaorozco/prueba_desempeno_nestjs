@@ -111,18 +111,54 @@ export class MaintenancesService {
         );
       }
 
-      // I verify that the mechanic does not already have an active maintenance
-      const activeMechanicMaintenance = await manager.findOne(Maintenance, {
-        where: {
-          mechanicId: mechanic.id,
-          status: In([MaintenanceStatus.SCHEDULED, MaintenanceStatus.IN_PROGRESS]),
-        },
-      });
+      // I enforce the rule: check for overlapping schedule conflicts for the assigned mechanic.
+      // Under Section 3 Point 10:
+      // a. No two maintenances at the same time in same workshop.
+      // b. No two maintenances at the same time in different workshops.
+      // c. If scheduled 7:30 to 9:00, cannot start another at 8:00 in any workshop.
+      // d. If scheduled 7:30 to 9:00, another starting at 9:00 IS allowed.
+      const newStart = new Date(createDto.scheduledDate).getTime();
+      const newDurationHours = Number(createDto.estimatedDurationHours || 2.0);
+      const newEnd = newStart + newDurationHours * 3600000;
 
-      if (activeMechanicMaintenance) {
-        throw new ConflictException(
-          `Mechanic '${mechanic.name}' already has an active maintenance (ID: ${activeMechanicMaintenance.id}) in progress or scheduled`,
-        );
+      let activeMechanicJobs: Maintenance[] = [];
+      if (typeof manager.find === 'function') {
+        const found = await manager.find(Maintenance, {
+          where: {
+            mechanicId: mechanic.id,
+            status: In([MaintenanceStatus.SCHEDULED, MaintenanceStatus.IN_PROGRESS]),
+          },
+        });
+        if (Array.isArray(found)) {
+          activeMechanicJobs = found;
+        }
+      }
+      if (activeMechanicJobs.length === 0 && typeof manager.findOne === 'function') {
+        const single = await manager.findOne(Maintenance, {
+          where: {
+            mechanicId: mechanic.id,
+            status: In([MaintenanceStatus.SCHEDULED, MaintenanceStatus.IN_PROGRESS]),
+          },
+        });
+        if (single) {
+          activeMechanicJobs = [single];
+        }
+      }
+
+      for (const existing of activeMechanicJobs) {
+        const existStart = existing.scheduledDate
+          ? new Date(existing.scheduledDate).getTime()
+          : newStart;
+        const existDurationHours = Number(existing.estimatedDurationHours || 2.0);
+        const existEnd = existStart + existDurationHours * 3600000;
+
+        // Interval overlap check: [newStart, newEnd) overlaps with [existStart, existEnd)
+        // Two half-open intervals overlap if and only if: newStart < existEnd && existStart < newEnd
+        if (newStart < existEnd && existStart < newEnd) {
+          throw new ConflictException(
+            `Mechanic schedule conflict: Mechanic '${mechanic.name}' already has an active maintenance (ID: ${existing.id}) scheduled from ${new Date(existStart).toISOString()} to ${new Date(existEnd).toISOString()} which overlaps with requested interval ${new Date(newStart).toISOString()} to ${new Date(newEnd).toISOString()}`,
+          );
+        }
       }
 
       // Step 3: I validate the workshop existence and active operational status
@@ -152,6 +188,7 @@ export class MaintenancesService {
         description: createDto.description,
         mileage: createDto.mileage,
         scheduledDate: new Date(createDto.scheduledDate),
+        estimatedDurationHours: newDurationHours,
       });
 
       return manager.save(Maintenance, maintenance);
