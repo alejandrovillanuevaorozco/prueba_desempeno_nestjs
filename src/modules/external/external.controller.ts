@@ -55,24 +55,22 @@ export class ExternalController {
     // 1. I query the vehicle and completed maintenances via MaintenancesService
     const history = await this.maintenancesService.findVehicleHistory(plate);
 
-    // 2. I shape the output specifically for external consumers, computing the 'available' boolean
+    // 2. I shape the output specifically matching the PDF external partner contract format
     return {
       vehicle: {
         id: history.vehicle.id,
         plate: history.vehicle.plate,
         brand: history.vehicle.brand,
         model: history.vehicle.model,
-        mileage: history.vehicle.mileage,
-        status: history.vehicle.status,
         available: history.vehicle.status === 'AVAILABLE',
       },
       maintenances: history.maintenances.map((m) => ({
         id: m.id,
-        type: m.type,
-        status: m.status,
+        type: m.type === 'PREVENTIVE' ? 'PREVENTIVO' : m.type === 'CORRECTIVE' ? 'CORRECTIVO' : m.type,
+        status: m.status === 'COMPLETED' ? 'COMPLETADO' : m.status,
         description: m.description,
-        mileage: m.mileage,
-        cost: m.finalCost,
+        mileage: Number(m.mileage),
+        cost: Number(m.finalCost || 0),
         finishedAt: m.completedAt,
         mechanic: {
           id: m.mechanic?.id,
