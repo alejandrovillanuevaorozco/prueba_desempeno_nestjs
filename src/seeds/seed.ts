@@ -12,11 +12,29 @@ import { User } from '../modules/users/entities/user.entity.js';
 import { Vehicle } from '../modules/vehicles/entities/vehicle.entity.js';
 import { Workshop } from '../modules/workshops/entities/workshop.entity.js';
 
+/**
+ * Idempotent Database Seeder
+ * 
+ * In this script, I construct and execute a deterministic, idempotent database seeder.
+ * 
+ * Architectural Design & Invariant Guarantees:
+ * 1. Idempotency via Natural Keys: Rather than truncating tables (which breaks foreign key constraints
+ *    and destroys running test state), I look up existing entities by natural unique identifiers
+ *    (email for Users and Mechanics, license plate for Vehicles, name for Workshops).
+ * 2. Safe Re-execution: If an entity already exists, I synchronize its state (e.g., ensuring password hashes
+ *    and role permissions match the specification) without generating duplicate records or failing with SQL 23505.
+ * 3. Seed Coverage: I provision test data covering every domain scenario:
+ *    - Users: 1 ADMIN, 2 TECHNICIAN accounts with bcrypt-hashed credentials.
+ *    - Mechanics: 2 active (linked to technician accounts) and 1 inactive.
+ *    - Workshops: 1 active central workshop and 1 inactive auxiliary workshop.
+ *    - Vehicles: AVAILABLE, IN_MAINTENANCE, and INACTIVE vehicles.
+ *    - Maintenances: 1 COMPLETED historical order and 1 IN_PROGRESS active order.
+ */
 async function runSeed() {
   const logger = new Logger('FleetCoreSeeder');
   logger.log('🌱 Starting idempotent database seeding...');
 
-  // Initialize standalone DataSource with environment settings
+  // 1. I initialize an independent TypeORM DataSource connecting directly with environment variables
   const dataSource = new DataSource({
     type: 'postgres',
     host: process.env.DB_HOST || 'localhost',
@@ -38,7 +56,7 @@ async function runSeed() {
     const workshopRepository = dataSource.getRepository(Workshop);
     const maintenanceRepository = dataSource.getRepository(Maintenance);
 
-    // 1. Seed Users (1 ADMIN, 2 TECHNICIAN)
+    // 2. I seed system users with bcrypt hashed passwords (1 ADMIN, 2 TECHNICIAN)
     logger.log('--- 1. Seeding Users ---');
     const defaultPassword = await bcrypt.hash('FleetCore2026!', 10);
 
@@ -78,7 +96,7 @@ async function runSeed() {
       seededUsers[u.email] = existing;
     }
 
-    // 2. Seed Mechanics (2 active linked to technicians, 1 inactive)
+    // 3. I seed mechanics, linking active mechanics to technician user accounts
     logger.log('--- 2. Seeding Mechanics ---');
     const mechanicsData = [
       {
@@ -119,7 +137,7 @@ async function runSeed() {
       seededMechanics[m.name] = existing;
     }
 
-    // 3. Seed Workshops (1 active, 1 inactive)
+    // 4. I seed workshop facilities (1 active, 1 inactive)
     logger.log('--- 3. Seeding Workshops ---');
     const workshopsData = [
       {
@@ -146,7 +164,7 @@ async function runSeed() {
       seededWorkshops[w.name] = existing;
     }
 
-    // 4. Seed Vehicles (2 AVAILABLE, 1 IN_MAINTENANCE, 1 INACTIVE)
+    // 5. I seed fleet vehicles with different operational statuses
     logger.log('--- 4. Seeding Vehicles ---');
     const vehiclesData = [
       {
@@ -198,10 +216,10 @@ async function runSeed() {
       seededVehicles[v.plate] = existing;
     }
 
-    // 5. Seed Maintenances (At least 1 COMPLETED for history, 1 IN_PROGRESS for DEF456)
+    // 6. I seed maintenance records (historical completed and active in-progress)
     logger.log('--- 5. Seeding Maintenances ---');
 
-    // 5a. Completed maintenance for vehicle ABC123
+    // 6a. Historical COMPLETED maintenance order for vehicle ABC123
     const compVehicle = seededVehicles['ABC123'];
     const compMechanic = seededMechanics['Carlos Pérez'];
     const activeWorkshop = seededWorkshops['Taller Central FleetCore'];
@@ -236,7 +254,7 @@ async function runSeed() {
       logger.log('Historical COMPLETED maintenance already exists for ABC123');
     }
 
-    // 5b. IN_PROGRESS maintenance for vehicle DEF456 (status IN_MAINTENANCE)
+    // 6b. Active IN_PROGRESS maintenance order for vehicle DEF456 (status IN_MAINTENANCE)
     const inProgVehicle = seededVehicles['DEF456'];
     const inProgMechanic = seededMechanics['Laura Gómez'];
 
@@ -270,6 +288,7 @@ async function runSeed() {
     logger.error('❌ Error during seeding execution:', error);
     throw error;
   } finally {
+    // 7. I cleanly disconnect the standalone DataSource connection
     await dataSource.destroy();
   }
 }
@@ -277,3 +296,4 @@ async function runSeed() {
 runSeed()
   .then(() => process.exit(0))
   .catch(() => process.exit(1));
+

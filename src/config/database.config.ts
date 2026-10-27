@@ -6,6 +6,12 @@ import { User } from '../modules/users/entities/user.entity.js';
 import { Vehicle } from '../modules/vehicles/entities/vehicle.entity.js';
 import { Workshop } from '../modules/workshops/entities/workshop.entity.js';
 
+/**
+ * Database Configuration Factory
+ * 
+ * In this factory function, I load PostgreSQL database connection parameters from
+ * environment variables, register the TypeORM domain entities, and configure logging.
+ */
 export const getDatabaseConfig = (
   configService: ConfigService,
 ): TypeOrmModuleOptions => ({
@@ -19,3 +25,4 @@ export const getDatabaseConfig = (
   synchronize: true, // Automatically synchronize schema in evaluation environment
   logging: configService.get<string>('NODE_ENV') === 'development' ? ['error', 'warn'] : false,
 });
+

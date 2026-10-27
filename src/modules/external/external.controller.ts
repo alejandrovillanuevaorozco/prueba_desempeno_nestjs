@@ -14,6 +14,16 @@ import { Public } from '../../common/decorators/public.decorator.js';
 import { ApiKeyGuard } from '../../common/guards/api-key.guard.js';
 import { MaintenancesService } from '../maintenances/maintenances.service.js';
 
+/**
+ * ExternalController
+ * 
+ * In this controller, I expose B2B integration endpoints designed for third-party
+ * logistics partners and external auditing platforms.
+ * 
+ * Security Architecture:
+ * 1. I apply @Public() so that the global JwtAuthGuard bypasses JWT bearer token verification.
+ * 2. I apply @UseGuards(ApiKeyGuard) to enforce authentication through the 'x-api-key' request header.
+ */
 @ApiTags('External Integration (x-api-key)')
 @Public()
 @UseGuards(ApiKeyGuard)
@@ -21,10 +31,14 @@ import { MaintenancesService } from '../maintenances/maintenances.service.js';
 export class ExternalController {
   constructor(private readonly maintenancesService: MaintenancesService) {}
 
+  /**
+   * I retrieve the operational status and historical completed maintenance records
+   * for a given vehicle license plate.
+   */
   @Get('vehicles/:plate/history')
   @ApiHeader({
     name: 'x-api-key',
-    description: 'External partner integration API Key',
+    description: 'External partner integration API Key (configured in API_KEYS)',
     required: true,
   })
   @ApiOperation({
@@ -38,8 +52,10 @@ export class ExternalController {
   @ApiResponse({ status: 401, description: 'Missing or invalid x-api-key' })
   @ApiResponse({ status: 404, description: 'Vehicle not found' })
   async getVehicleHistory(@Param('plate') plate: string) {
+    // 1. I query the vehicle and completed maintenances via MaintenancesService
     const history = await this.maintenancesService.findVehicleHistory(plate);
 
+    // 2. I shape the output specifically for external consumers, computing the 'available' boolean
     return {
       vehicle: {
         id: history.vehicle.id,
@@ -70,3 +86,4 @@ export class ExternalController {
     };
   }
 }
+

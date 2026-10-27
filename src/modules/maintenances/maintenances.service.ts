@@ -20,6 +20,11 @@ import { Maintenance } from './entities/maintenance.entity.js';
 
 @Injectable()
 export class MaintenancesService {
+  /**
+   * I inject the required repositories and the TypeORM DataSource.
+   * I use DataSource directly to initiate ACID transactions (manager.transaction)
+   * whenever operations cross multiple entity boundaries (such as Maintenance and Vehicle).
+   */
   constructor(
     @InjectRepository(Maintenance)
     private readonly maintenanceRepository: Repository<Maintenance>,
@@ -33,16 +38,21 @@ export class MaintenancesService {
   ) {}
 
   /**
-   * Creates a new maintenance with atomic transaction and concurrency locking.
-   * Enforces all domain invariants:
-   * 1. Vehicle exists, is not INACTIVE, and has no active maintenance.
-   * 2. Mileage is not less than vehicle's current odometer.
-   * 3. Mechanic exists, is ACTIVE, and has no overlapping active maintenance (concurrency lock).
-   * 4. Workshop exists and is ACTIVE.
+   * I schedule a new maintenance operation inside an atomic database transaction.
+   *
+   * Architectural & Concurrency Decisions:
+   * 1. Concurrency Control: I apply a pessimistic write lock (`pessimistic_write`)
+   *    on both the Vehicle and Mechanic rows. This ensures that if two requests arrive
+   *    simultaneously attempting to assign the same mechanic or vehicle, the second request
+   *    is forced to wait until the first commits, preventing double-booking race conditions.
+   * 2. Invariant Validation: I verify that the vehicle is not INACTIVE, that registered
+   *    mileage is not less than the vehicle odometer, that the mechanic is ACTIVE, and that
+   *    the workshop is ACTIVE.
+   * 3. Initial State: I ensure every newly created maintenance starts strictly in SCHEDULED state.
    */
   async create(createDto: CreateMaintenanceDto): Promise<Maintenance> {
     return this.dataSource.transaction(async (manager) => {
-      // 1. Validate Vehicle
+      // Step 1: I fetch the vehicle with a pessimistic lock to guard against concurrent jobs
       const vehicle = await manager.findOne(Vehicle, {
         where: { id: createDto.vehicleId },
         lock: { mode: 'pessimistic_write' },
@@ -54,18 +64,21 @@ export class MaintenancesService {
         );
       }
 
+      // I enforce the rule: decommissioned / inactive vehicles cannot receive new maintenance
       if (vehicle.status === VehicleStatus.INACTIVE) {
         throw new BadRequestException(
           `Vehicle '${vehicle.plate}' is INACTIVE and cannot be scheduled for maintenance`,
         );
       }
 
+      // I validate that odometer readings cannot go backwards
       if (Number(createDto.mileage) < Number(vehicle.mileage)) {
         throw new BadRequestException(
           `Registered maintenance mileage (${createDto.mileage} km) cannot be lower than current vehicle mileage (${vehicle.mileage} km)`,
         );
       }
 
+      // I check if this vehicle already has an active job (SCHEDULED or IN_PROGRESS)
       const activeVehicleMaintenance = await manager.findOne(Maintenance, {
         where: {
           vehicleId: vehicle.id,
@@ -79,7 +92,7 @@ export class MaintenancesService {
         );
       }
 
-      // 2. Validate Mechanic with Pessimistic Lock to eliminate race conditions
+      // Step 2: I fetch the mechanic with a pessimistic lock to prevent simultaneous assignment
       const mechanic = await manager.findOne(Mechanic, {
         where: { id: createDto.mechanicId },
         lock: { mode: 'pessimistic_write' },
@@ -91,12 +104,14 @@ export class MaintenancesService {
         );
       }
 
+      // I enforce the rule: inactive mechanics cannot be assigned to new jobs
       if (mechanic.status === Status.INACTIVE) {
         throw new BadRequestException(
           `Mechanic '${mechanic.name}' is INACTIVE and cannot be assigned to new maintenances`,
         );
       }
 
+      // I verify that the mechanic does not already have an active maintenance
       const activeMechanicMaintenance = await manager.findOne(Maintenance, {
         where: {
           mechanicId: mechanic.id,
@@ -110,7 +125,7 @@ export class MaintenancesService {
         );
       }
 
-      // 3. Validate Workshop
+      // Step 3: I validate the workshop existence and active operational status
       const workshop = await manager.findOne(Workshop, {
         where: { id: createDto.workshopId },
       });
@@ -127,7 +142,7 @@ export class MaintenancesService {
         );
       }
 
-      // 4. Create Maintenance entity in initial SCHEDULED state
+      // Step 4: I instantiate and persist the Maintenance record in initial SCHEDULED state
       const maintenance = manager.create(Maintenance, {
         vehicleId: vehicle.id,
         mechanicId: mechanic.id,
@@ -144,8 +159,19 @@ export class MaintenancesService {
   }
 
   /**
-   * Updates maintenance status within an atomic ACID transaction.
-   * Synchronizes Vehicle status and validates closure data.
+   * I handle maintenance state transitions inside an atomic ACID transaction.
+   *
+   * Architectural & Business Rules:
+   * 1. Authorization: If a TECHNICIAN performs this update, I ensure they can only
+   *    mutate records assigned to their own mechanic profile.
+   * 2. Terminal States: I strictly forbid modifying records that are already COMPLETED
+   *    or CANCELLED.
+   * 3. Automatic Synchronization:
+   *    - When advancing to IN_PROGRESS, I automatically transition the Vehicle to IN_MAINTENANCE.
+   *    - When advancing to COMPLETED, I validate all 4 mandatory closure fields
+   *      (workDone, finalCost > 0, completedAt, finalMileage >= initial), transition the
+   *      Vehicle to AVAILABLE, and update the vehicle's odometer to finalMileage.
+   *    - If an IN_PROGRESS maintenance is CANCELLED, I restore the Vehicle to AVAILABLE.
    */
   async updateStatus(
     id: string,
@@ -153,6 +179,7 @@ export class MaintenancesService {
     currentUser?: { id: string; role: Role; mechanicId?: string },
   ): Promise<Maintenance> {
     return this.dataSource.transaction(async (manager) => {
+      // I lock the maintenance record during the status transition
       const maintenance = await manager.findOne(Maintenance, {
         where: { id },
         relations: { vehicle: true, mechanic: true, workshop: true },
@@ -163,7 +190,7 @@ export class MaintenancesService {
         throw new NotFoundException(`Maintenance with ID '${id}' not found`);
       }
 
-      // Check technician authorization
+      // I check if the requesting user is a technician assigned to this job
       if (
         currentUser &&
         currentUser.role === Role.TECHNICIAN &&
@@ -178,11 +205,12 @@ export class MaintenancesService {
       const currentStatus = maintenance.status;
       const targetStatus = dto.status;
 
+      // If no status change is requested, I return the maintenance as is
       if (currentStatus === targetStatus) {
         return maintenance;
       }
 
-      // Invariant: Terminal States cannot be mutated
+      // Rule: Terminal states cannot be reopened or mutated
       if (currentStatus === MaintenanceStatus.COMPLETED) {
         throw new BadRequestException(
           'A COMPLETED maintenance cannot return to any previous status; it is terminal',
@@ -195,7 +223,7 @@ export class MaintenancesService {
         );
       }
 
-      // State Transition Logic
+      // State Transition 1: Transitioning to IN_PROGRESS
       if (targetStatus === MaintenanceStatus.IN_PROGRESS) {
         if (currentStatus !== MaintenanceStatus.SCHEDULED) {
           throw new BadRequestException(
@@ -203,18 +231,20 @@ export class MaintenancesService {
           );
         }
 
-        // Atomic Side Effect: Vehicle transitions to IN_MAINTENANCE
+        // I set the maintenance to IN_PROGRESS and atomically sync the vehicle to IN_MAINTENANCE
         maintenance.status = MaintenanceStatus.IN_PROGRESS;
         maintenance.vehicle.status = VehicleStatus.IN_MAINTENANCE;
         await manager.save(Vehicle, maintenance.vehicle);
-      } else if (targetStatus === MaintenanceStatus.COMPLETED) {
+      }
+      // State Transition 2: Transitioning to COMPLETED
+      else if (targetStatus === MaintenanceStatus.COMPLETED) {
         if (currentStatus !== MaintenanceStatus.IN_PROGRESS) {
           throw new BadRequestException(
             `Invalid state transition: Cannot change from '${currentStatus}' to 'COMPLETED'. Must be 'IN_PROGRESS'`,
           );
         }
 
-        // Validate mandatory closure fields
+        // I validate mandatory closure data required by the specification
         if (!dto.workDone || dto.workDone.trim().length === 0) {
           throw new BadRequestException(
             'Missing mandatory closure field: workDone (trabajo realizado)',
@@ -242,20 +272,23 @@ export class MaintenancesService {
           );
         }
 
+        // I record final job metrics
         maintenance.status = MaintenanceStatus.COMPLETED;
         maintenance.workDone = dto.workDone;
         maintenance.finalCost = dto.finalCost;
         maintenance.completedAt = new Date(dto.completedAt);
         maintenance.finalMileage = dto.finalMileage;
 
-        // Atomic Side Effect: Vehicle transitions to AVAILABLE and updates odometer
+        // Atomically: I release the vehicle to AVAILABLE and update odometer reading
         maintenance.vehicle.status = VehicleStatus.AVAILABLE;
         maintenance.vehicle.mileage = dto.finalMileage;
         await manager.save(Vehicle, maintenance.vehicle);
-      } else if (targetStatus === MaintenanceStatus.CANCELLED) {
+      }
+      // State Transition 3: Transitioning to CANCELLED
+      else if (targetStatus === MaintenanceStatus.CANCELLED) {
         maintenance.status = MaintenanceStatus.CANCELLED;
 
-        // If vehicle was IN_MAINTENANCE, restore it to AVAILABLE
+        // If the vehicle was in maintenance, I restore it back to AVAILABLE
         if (maintenance.vehicle.status === VehicleStatus.IN_MAINTENANCE) {
           maintenance.vehicle.status = VehicleStatus.AVAILABLE;
           await manager.save(Vehicle, maintenance.vehicle);
@@ -270,6 +303,9 @@ export class MaintenancesService {
     });
   }
 
+  /**
+   * I list all maintenance records with optional status or type filtering.
+   */
   async findAll(options?: {
     status?: MaintenanceStatus;
     type?: string;
@@ -289,6 +325,9 @@ export class MaintenancesService {
     });
   }
 
+  /**
+   * I query all active maintenances (either SCHEDULED or IN_PROGRESS).
+   */
   async findActive(): Promise<Maintenance[]> {
     return this.maintenanceRepository.find({
       where: {
@@ -299,6 +338,9 @@ export class MaintenancesService {
     });
   }
 
+  /**
+   * I retrieve the full details of a specific maintenance by UUID.
+   */
   async findById(id: string): Promise<Maintenance> {
     const maintenance = await this.maintenanceRepository.findOne({
       where: { id },
@@ -312,6 +354,9 @@ export class MaintenancesService {
     return maintenance;
   }
 
+  /**
+   * I query all maintenance operations associated with a specific vehicle.
+   */
   async findByVehicle(vehicleId: string): Promise<Maintenance[]> {
     return this.maintenanceRepository.find({
       where: { vehicleId },
@@ -320,6 +365,10 @@ export class MaintenancesService {
     });
   }
 
+  /**
+   * I query the historical completed maintenance records for a vehicle by ID or plate.
+   * This serves both the internal audit trail and the external B2B partner endpoint.
+   */
   async findVehicleHistory(vehicleIdOrPlate: string): Promise<{
     vehicle: Vehicle;
     maintenances: Maintenance[];
@@ -356,6 +405,9 @@ export class MaintenancesService {
     };
   }
 
+  /**
+   * I query all maintenances assigned to a specific mechanic.
+   */
   async findByMechanic(mechanicId: string): Promise<Maintenance[]> {
     return this.maintenanceRepository.find({
       where: { mechanicId },

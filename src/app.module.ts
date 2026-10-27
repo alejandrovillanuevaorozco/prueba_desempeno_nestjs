@@ -15,17 +15,31 @@ import { UsersModule } from './modules/users/users.module.js';
 import { VehiclesModule } from './modules/vehicles/vehicles.module.js';
 import { WorkshopsModule } from './modules/workshops/workshops.module.js';
 
+/**
+ * AppModule
+ * 
+ * In this root module, I assemble the modular architecture of the FleetCore system.
+ * I register global pipes, database configuration, feature domain modules, and
+ * global infrastructure providers:
+ * - APP_GUARD (JwtAuthGuard): Protects all endpoints by default unless annotated with @Public().
+ * - APP_GUARD (RolesGuard): Validates required user roles against metadata from @Roles().
+ * - APP_INTERCEPTOR (TransformInterceptor): Enforces a uniform { success, statusCode, data, timestamp } response envelope.
+ * - APP_FILTER (HttpExceptionFilter): Intercepts all application and database exceptions cleanly.
+ */
 @Module({
   imports: [
+    // 1. I configure environment variables globally across all modules
     ConfigModule.forRoot({
       isGlobal: true,
       envFilePath: '.env',
     }),
+    // 2. I configure asynchronous TypeORM database connection
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
       useFactory: getDatabaseConfig,
     }),
+    // 3. Domain feature modules
     AuthModule,
     UsersModule,
     VehiclesModule,
@@ -35,6 +49,7 @@ import { WorkshopsModule } from './modules/workshops/workshops.module.js';
     ExternalModule,
   ],
   providers: [
+    // 4. Global security guards and response lifecycle handlers
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,
@@ -54,3 +69,4 @@ import { WorkshopsModule } from './modules/workshops/workshops.module.js';
   ],
 })
 export class AppModule {}
+

@@ -22,12 +22,22 @@ import { CreateMechanicDto } from './dto/create-mechanic.dto.js';
 import { UpdateMechanicDto } from './dto/update-mechanic.dto.js';
 import { MechanicsService } from './mechanics.service.js';
 
+/**
+ * MechanicsController
+ * 
+ * In this controller, I expose endpoints to manage the fleet mechanic roster.
+ * Administrative operations (creation, update, status toggling, logical inactivation)
+ * require the ADMIN role, whereas queries are accessible across all authenticated roles.
+ */
 @ApiTags('Mechanics')
 @ApiBearerAuth('JWT')
 @Controller('mechanics')
 export class MechanicsController {
   constructor(private readonly mechanicsService: MechanicsService) {}
 
+  /**
+   * I register a new mechanic in the catalog (ADMIN only).
+   */
   @Post()
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Register a new mechanic (ADMIN only)' })
@@ -37,6 +47,9 @@ export class MechanicsController {
     return this.mechanicsService.create(createMechanicDto);
   }
 
+  /**
+   * I list all mechanics with optional filtering by operational status.
+   */
   @Get()
   @ApiOperation({ summary: 'List all registered mechanics' })
   @ApiQuery({
@@ -49,6 +62,9 @@ export class MechanicsController {
     return this.mechanicsService.findAll(status);
   }
 
+  /**
+   * I retrieve a mechanic's profile details and maintenance history by their UUID.
+   */
   @Get(':id')
   @ApiOperation({ summary: 'Get mechanic details by ID' })
   @ApiResponse({ status: 200, description: 'Mechanic details' })
@@ -57,6 +73,9 @@ export class MechanicsController {
     return this.mechanicsService.findById(id);
   }
 
+  /**
+   * I update a mechanic's information (ADMIN only).
+   */
   @Patch(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Update mechanic details (ADMIN only)' })
@@ -68,6 +87,9 @@ export class MechanicsController {
     return this.mechanicsService.update(id, updateMechanicDto);
   }
 
+  /**
+   * I manually modify a mechanic's operational status (ADMIN only).
+   */
   @Patch(':id/status')
   @Roles(Role.ADMIN)
   @ApiOperation({ summary: 'Activate or inactivate a mechanic (ADMIN only)' })
@@ -78,6 +100,9 @@ export class MechanicsController {
     return this.mechanicsService.setStatus(id, status);
   }
 
+  /**
+   * I logically inactivate a mechanic without deleting historical maintenance records (ADMIN only).
+   */
   @Delete(':id')
   @Roles(Role.ADMIN)
   @ApiOperation({
@@ -87,3 +112,4 @@ export class MechanicsController {
     return this.mechanicsService.inactivate(id);
   }
 }
+

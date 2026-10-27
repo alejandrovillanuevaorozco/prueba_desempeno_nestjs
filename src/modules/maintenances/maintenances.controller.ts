@@ -26,8 +26,16 @@ import { MaintenancesService } from './maintenances.service.js';
 @ApiBearerAuth('JWT')
 @Controller('maintenances')
 export class MaintenancesController {
+  /**
+   * I inject MaintenancesService to delegate all business decisions,
+   * keeping this controller thin and focused purely on HTTP routing and Swagger docs.
+   */
   constructor(private readonly maintenancesService: MaintenancesService) {}
 
+  /**
+   * I expose an endpoint to schedule new maintenance operations.
+   * I restrict this action strictly to the ADMIN role using @Roles(Role.ADMIN).
+   */
   @Post()
   @Roles(Role.ADMIN)
   @ApiOperation({
@@ -42,6 +50,10 @@ export class MaintenancesController {
     return this.maintenancesService.create(createDto);
   }
 
+  /**
+   * I expose an endpoint allowing authenticated users to list all maintenance jobs,
+   * optionally filtering by status (SCHEDULED, IN_PROGRESS, COMPLETED, CANCELLED).
+   */
   @Get()
   @ApiOperation({ summary: 'List all maintenance records' })
   @ApiQuery({
@@ -54,6 +66,10 @@ export class MaintenancesController {
     return this.maintenancesService.findAll({ status });
   }
 
+  /**
+   * I expose a specialized endpoint returning active operations only
+   * (records in SCHEDULED or IN_PROGRESS status).
+   */
   @Get('active')
   @ApiOperation({ summary: 'List all active maintenances (SCHEDULED or IN_PROGRESS)' })
   @ApiResponse({ status: 200, description: 'Active fleet maintenances list' })
@@ -61,6 +77,10 @@ export class MaintenancesController {
     return this.maintenancesService.findActive();
   }
 
+  /**
+   * I allow technicians to inspect only the jobs assigned to their linked mechanic profile.
+   * I extract the logged-in user payload using my custom @CurrentUser() decorator.
+   */
   @Get('my-tasks')
   @Roles(Role.TECHNICIAN, Role.ADMIN)
   @ApiOperation({
@@ -73,12 +93,19 @@ export class MaintenancesController {
     return [];
   }
 
+  /**
+   * I allow querying all maintenance history associated with a specific vehicle UUID.
+   */
   @Get('vehicle/:vehicleId')
   @ApiOperation({ summary: 'List all maintenances for a specific vehicle' })
   async findByVehicle(@Param('vehicleId') vehicleId: string) {
     return this.maintenancesService.findByVehicle(vehicleId);
   }
 
+  /**
+   * I provide an audit endpoint to retrieve completed maintenance records
+   * for a given vehicle by either its UUID or license plate.
+   */
   @Get('vehicle/:identifier/history')
   @ApiOperation({
     summary: 'Retrieve historical completed maintenances of a vehicle by ID or plate',
@@ -88,12 +115,18 @@ export class MaintenancesController {
     return this.maintenancesService.findVehicleHistory(identifier);
   }
 
+  /**
+   * I allow listing all maintenance operations dispatched to a particular mechanic.
+   */
   @Get('mechanic/:mechanicId')
   @ApiOperation({ summary: 'List all maintenances assigned to a specific mechanic' })
   async findByMechanic(@Param('mechanicId') mechanicId: string) {
     return this.maintenancesService.findByMechanic(mechanicId);
   }
 
+  /**
+   * I retrieve the detailed breakdown of a single maintenance job by ID.
+   */
   @Get(':id')
   @ApiOperation({ summary: 'Retrieve maintenance details by ID' })
   @ApiResponse({ status: 200, description: 'Maintenance record details' })
@@ -102,6 +135,12 @@ export class MaintenancesController {
     return this.maintenancesService.findById(id);
   }
 
+  /**
+   * I expose the endpoint to advance or cancel maintenance states.
+   * Permitted for both ADMIN and TECHNICIAN roles.
+   * I pass the currentUser object to the service to enforce that technicians
+   * can only update their own assigned maintenance tasks.
+   */
   @Patch(':id/status')
   @Roles(Role.ADMIN, Role.TECHNICIAN)
   @ApiOperation({

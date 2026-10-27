@@ -18,11 +18,21 @@ import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
 
+/**
+ * AuthController
+ * 
+ * In this controller, I expose the REST endpoints for user registration,
+ * credential authentication, and session profile inspection.
+ */
 @ApiTags('Authentication')
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  /**
+   * I register a new platform user with validated email, bcrypt-hashed password,
+   * and designated role (ADMIN or TECHNICIAN).
+   */
   @Public()
   @Post('register')
   @ApiOperation({ summary: 'Register a new user (ADMIN, TECHNICIAN)' })
@@ -35,6 +45,9 @@ export class AuthController {
     return this.authService.register(registerDto);
   }
 
+  /**
+   * I authenticate user credentials and return a signed JWT access token.
+   */
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
@@ -48,6 +61,9 @@ export class AuthController {
     return this.authService.login(loginDto);
   }
 
+  /**
+   * I retrieve the authenticated user profile from the verified JWT session context.
+   */
   @Get('profile')
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Retrieve currently authenticated user profile' })
@@ -57,3 +73,4 @@ export class AuthController {
     return user;
   }
 }
+
