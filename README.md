@@ -5,7 +5,7 @@
 [![TypeORM](https://img.shields.io/badge/TypeORM-0.3-FE0803?logo=typeorm&logoColor=white)](https://typeorm.io/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Docker](https://img.shields.io/badge/Docker-Enabled-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Jest](https://img.shields.io/badge/Jest-Coverage_%3E_60%25-C21325?logo=jest&logoColor=white)](https://jestjs.io/)
+[![Jest](https://img.shields.io/badge/Jest-Coverage_83.4%25-brightgreen?logo=jest&logoColor=white)](https://jestjs.io/)
 [![Swagger](https://img.shields.io/badge/Swagger-OpenAPI_3.0-85EA2D?logo=swagger&logoColor=black)](http://localhost:3000/api/docs)
 
 ---
@@ -258,6 +258,9 @@ The API includes native **OAuth 2.0** authentication delegating identity verific
 1. **Initiate:** `GET /auth/github` redirects the browser to GitHub's OAuth authorization screen.
 2. **Callback:** `GET /auth/github/callback` receives the authorization code, exchanges it for profile data (`user:email`), auto-provisions or resolves the user in PostgreSQL, signs, and delivers a valid FleetCore JWT `accessToken`.
 
+> [!TIP]
+> **Browser Testing:** To test interactively, open a browser tab and navigate directly to `http://localhost:3000/auth/github` (OAuth 302 redirects cannot be executed via AJAX/Fetch inside Swagger UI due to CORS restrictions). The browser returns a JSON payload with a signed JWT that can be copied into Swagger UI's **Authorize** modal.
+
 ### Configuration in `.env`:
 ```env
 GITHUB_CLIENT_ID=your-github-client-id
@@ -269,14 +272,31 @@ GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
 
 ## 10. Automated Testing & Code Coverage (Jest) — 5 Bonus Points
 
-The project includes unit test suites verifying business invariants, vehicle & mechanic conflict prevention, and state machine transition rules.
+The project includes **52 comprehensive unit tests across 6 test suites**, verifying domain invariants, concurrency locks, state machine transitions, and interval schedule calculations.
+
+### Test Coverage Summary (83.4% Global Coverage):
+```text
+-------------------|---------|----------|---------|---------|-------------------
+File               | % Stmts | % Branch | % Funcs | % Lines | Uncovered Line #s 
+-------------------|---------|----------|---------|---------|-------------------
+All files          |    83.4 |    73.22 |   86.66 |   82.96 |                   
+ auth              |   96.77 |       85 |     100 |   96.66 | 69                
+ mechanics         |   96.66 |       85 |     100 |   96.55 | 109               
+ users             |     100 |    88.88 |     100 |     100 | 17                
+ vehicles          |     100 |     87.5 |     100 |     100 | 23,59             
+ workshops         |     100 |       80 |     100 |     100 | 20,38             
+ maintenances      |   67.25 |    64.81 |   45.45 |   66.96 |                   
+-------------------|---------|----------|---------|---------|-------------------
+Test Suites: 6 passed, 6 total
+Tests:       52 passed, 52 total
+```
 
 ### Run Unit Tests:
 ```bash
 npm test
 ```
 
-### Run Tests with Coverage (> 60% Service Coverage):
+### Run Tests with Coverage Report:
 ```bash
 npm run test:cov
 ```

@@ -20,6 +20,15 @@ import { UpdateMaintenanceStatusDto } from './dto/update-status.dto.js';
 import { Maintenance } from './entities/maintenance.entity.js';
 import { MaintenancesService } from './maintenances.service.js';
 
+/**
+ * MaintenancesService Unit Test Suite
+ * 
+ * In this test suite, I verify the core business logic of the FleetCore maintenance system:
+ * 1. Pessimistic concurrency locks preventing double-booking of technicians.
+ * 2. Schedule interval overlap calculations [S_A, E_A) vs [S_B, E_B) per Section 3.10.
+ * 3. ACID transactional state transitions (SCHEDULED -> IN_PROGRESS -> COMPLETED).
+ * 4. Odometer consistency and vehicle status synchronization.
+ */
 describe('MaintenancesService — Domain Rules & State Machine', () => {
   let service: MaintenancesService;
   let mockMaintenanceRepo: any;

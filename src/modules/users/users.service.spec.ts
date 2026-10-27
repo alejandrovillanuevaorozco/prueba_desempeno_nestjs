@@ -6,6 +6,14 @@ import { Role } from '../../common/enums/role.enum.js';
 import { User } from './entities/user.entity.js';
 import { UsersService } from './users.service.js';
 
+/**
+ * UsersService Unit Test Suite
+ * 
+ * In this test suite, I test user persistence and identity lookup workflows:
+ * 1. Normalized case-insensitive email queries.
+ * 2. Password hash field isolation (excluded by default, included only when requested).
+ * 3. User creation and relationship resolution.
+ */
 describe('UsersService', () => {
   let service: UsersService;
   let mockRepository: any;

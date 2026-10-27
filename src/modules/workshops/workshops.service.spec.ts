@@ -6,6 +6,14 @@ import { Status } from '../../common/enums/status.enum.js';
 import { Workshop } from './entities/workshop.entity.js';
 import { WorkshopsService } from './workshops.service.js';
 
+/**
+ * WorkshopsService Unit Test Suite
+ * 
+ * In this test suite, I verify workshop operational management:
+ * 1. Default ACTIVE status initialization on facility creation.
+ * 2. Active workshop filtering for maintenance scheduling.
+ * 3. Logical inactivation safeguarding maintenance logs.
+ */
 describe('WorkshopsService', () => {
   let service: WorkshopsService;
   let mockWorkshopRepo: any;

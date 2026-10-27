@@ -6,6 +6,14 @@ import { Status } from '../../common/enums/status.enum.js';
 import { Mechanic } from './entities/mechanic.entity.js';
 import { MechanicsService } from './mechanics.service.js';
 
+/**
+ * MechanicsService Unit Test Suite
+ * 
+ * In this test suite, I test technician operational lifecycle rules:
+ * 1. Email uniqueness validation on mechanic creation and modification.
+ * 2. Logical inactivation preserving maintenance audit trails.
+ * 3. Status filtering and user association lookups.
+ */
 describe('MechanicsService', () => {
   let service: MechanicsService;
   let mockMechanicRepo: any;

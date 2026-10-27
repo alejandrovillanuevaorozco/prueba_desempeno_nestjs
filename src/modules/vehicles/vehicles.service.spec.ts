@@ -6,6 +6,15 @@ import { VehicleStatus } from '../../common/enums/vehicle-status.enum.js';
 import { Vehicle } from './entities/vehicle.entity.js';
 import { VehiclesService } from './vehicles.service.js';
 
+/**
+ * VehiclesService Unit Test Suite
+ * 
+ * In this test suite, I verify vehicle inventory and lifecycle management:
+ * 1. Normalized uppercase license plate constraint enforcement.
+ * 2. Uniqueness conflict rejection for duplicate plates.
+ * 3. Dual lookup mechanism by UUID primary key or uppercase license plate.
+ * 4. Logical inactivation protecting historical maintenance data integrity.
+ */
 describe('VehiclesService', () => {
   let service: VehiclesService;
   let mockVehicleRepo: any;
