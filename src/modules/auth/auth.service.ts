@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
+import { Role } from '../../common/enums/role.enum.js';
 import { JwtPayload } from '../../common/interfaces/jwt-payload.interface.js';
 import { UsersService } from '../users/users.service.js';
 import { LoginDto } from './dto/login.dto.js';
@@ -90,6 +91,48 @@ export class AuthService {
     const accessToken = this.jwtService.sign(payload);
 
     // 6. I return the signed token along with essential user identity details
+    return {
+      accessToken,
+      user: {
+        id: user.id,
+        email: user.email,
+        role: user.role,
+        mechanicId: user.mechanic?.id,
+      },
+    };
+  }
+
+  /**
+   * I handle OAuth 2.0 user integration (Find or Register).
+   * If a user with this email exists, I verify they are active and issue a JWT.
+   * If not, I seamlessly register them with TECHNICIAN role and issue a JWT.
+   */
+  async validateOAuthUser(email: string, name?: string) {
+    let user = await this.usersService.findByEmail(email);
+
+    if (!user) {
+      // User does not exist yet: I auto-provision them with a secure random password and TECHNICIAN role
+      const randomPassword = Math.random().toString(36).slice(-10) + '!A1b';
+      const hashedPassword = await bcrypt.hash(randomPassword, 10);
+      user = await this.usersService.create({
+        email,
+        password: hashedPassword,
+        role: Role.TECHNICIAN,
+      });
+    }
+
+    if (!user.isActive) {
+      throw new UnauthorizedException('User account has been deactivated');
+    }
+
+    const payload: JwtPayload = {
+      sub: user.id,
+      email: user.email,
+      role: user.role,
+    };
+
+    const accessToken = this.jwtService.sign(payload);
+
     return {
       accessToken,
       user: {

@@ -250,7 +250,24 @@ curl -X GET "http://localhost:3000/external/vehicles/ABC123/history" \
 
 ---
 
-## 9. Automated Testing & Code Coverage (Jest)
+## 9. OAuth 2.0 Integration (GitHub) — 10 Bonus Points
+
+The API includes native **OAuth 2.0** authentication delegating identity verification to **GitHub**:
+
+### Flow Architecture:
+1. **Initiate:** `GET /auth/github` redirects the browser to GitHub's OAuth authorization screen.
+2. **Callback:** `GET /auth/github/callback` receives the authorization code, exchanges it for profile data (`user:email`), auto-provisions or resolves the user in PostgreSQL, signs, and delivers a valid FleetCore JWT `accessToken`.
+
+### Configuration in `.env`:
+```env
+GITHUB_CLIENT_ID=your-github-client-id
+GITHUB_CLIENT_SECRET=your-github-client-secret
+GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
+```
+
+---
+
+## 10. Automated Testing & Code Coverage (Jest)
 
 The project includes unit test suites verifying business invariants, vehicle & mechanic conflict prevention, and state machine transition rules.
 

@@ -5,6 +5,8 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ApiBearerAuth,
@@ -14,6 +16,7 @@ import {
 } from '@nestjs/swagger';
 import { CurrentUser } from '../../common/decorators/current-user.decorator.js';
 import { Public } from '../../common/decorators/public.decorator.js';
+import { GithubAuthGuard } from '../../common/guards/github-auth.guard.js';
 import { AuthService } from './auth.service.js';
 import { LoginDto } from './dto/login.dto.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -71,6 +74,37 @@ export class AuthController {
   @ApiResponse({ status: 401, description: 'Missing or expired JWT' })
   getProfile(@CurrentUser() user: any) {
     return user;
+  }
+
+  /**
+   * I initiate the GitHub OAuth 2.0 authentication flow (Bonus Feature - 10 points).
+   * This endpoint redirects the user's browser to GitHub to grant identity permissions.
+   */
+  @Public()
+  @UseGuards(GithubAuthGuard)
+  @Get('github')
+  @ApiOperation({ summary: 'OAuth 2.0: Initiate GitHub authentication flow' })
+  @ApiResponse({ status: 302, description: 'Redirects to GitHub authorization page' })
+  async githubLogin() {
+    // Handled automatically by Passport's GithubAuthGuard redirection
+  }
+
+  /**
+   * I handle the GitHub OAuth 2.0 callback.
+   * I receive the authorized profile, auto-integrate the user, and issue a valid FleetCore JWT.
+   */
+  @Public()
+  @UseGuards(GithubAuthGuard)
+  @Get('github/callback')
+  @ApiOperation({
+    summary: 'OAuth 2.0: GitHub callback; auto-provisions user and returns valid JWT',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'User integrated successfully; returns accessToken and profile',
+  })
+  async githubCallback(@Req() req: any) {
+    return req.user;
   }
 }
 

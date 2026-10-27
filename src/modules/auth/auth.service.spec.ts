@@ -129,4 +129,52 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
   });
+
+  describe('validateOAuthUser() — OAuth 2.0 Integration', () => {
+    it('should authenticate existing OAuth user and issue valid JWT token', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'u-oauth-1',
+        email: 'dev@github.com',
+        role: Role.TECHNICIAN,
+        isActive: true,
+      });
+
+      const result = await service.validateOAuthUser('dev@github.com', 'Dev Coder');
+
+      expect(result.accessToken).toBe('mock-jwt-token');
+      expect(result.user.email).toBe('dev@github.com');
+      expect(result.user.role).toBe(Role.TECHNICIAN);
+      expect(mockUsersService.create).not.toHaveBeenCalled();
+    });
+
+    it('should automatically provision a new user if not found during OAuth login', async () => {
+      mockUsersService.findByEmail.mockResolvedValue(null);
+      mockUsersService.create.mockImplementation(async (data: any) => ({
+        id: 'u-oauth-new',
+        email: data.email,
+        role: data.role,
+        isActive: true,
+      }));
+
+      const result = await service.validateOAuthUser('newdev@github.com', 'New Dev');
+
+      expect(result.accessToken).toBe('mock-jwt-token');
+      expect(result.user.email).toBe('newdev@github.com');
+      expect(result.user.role).toBe(Role.TECHNICIAN);
+      expect(mockUsersService.create).toHaveBeenCalled();
+    });
+
+    it('should throw UnauthorizedException if OAuth user is deactivated', async () => {
+      mockUsersService.findByEmail.mockResolvedValue({
+        id: 'u-oauth-inactive',
+        email: 'blocked@github.com',
+        role: Role.TECHNICIAN,
+        isActive: false,
+      });
+
+      await expect(
+        service.validateOAuthUser('blocked@github.com'),
+      ).rejects.toThrow(UnauthorizedException);
+    });
+  });
 });
