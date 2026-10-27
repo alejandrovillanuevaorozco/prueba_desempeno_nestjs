@@ -54,7 +54,7 @@ flowchart TD
         VehiclesSvc["VehiclesService (Odometer Consistency, Plate Normalization)"]
         MechanicsSvc["MechanicsService (Specialty Verification & Logical Inactivation)"]
         WorkshopsSvc["WorkshopsService (Active Status Verification & Maintenance Linking)"]
-        MaintSvc["MaintenancesService (State Machine, Schedule Overlap [S,E), Pessimistic Lock)"]
+        MaintSvc["MaintenancesService (State Machine, Schedule Overlap Validation, Pessimistic Lock)"]
     end
 
     subgraph Persistence["3. Persistence & Transaction Layer"]
@@ -180,14 +180,26 @@ prueba_desempeno_nestjs/
 
 ```mermaid
 stateDiagram-v2
-    [*] --> SCHEDULED: Create Maintenance (Vehicle AVAILABLE, Mechanic ACTIVE, Workshop ACTIVE)
-    SCHEDULED --> IN_PROGRESS: Start Work (Transaction: Vehicle -> IN_MAINTENANCE)
-    SCHEDULED --> CANCELLED: Cancel Job (Terminal State)
-    IN_PROGRESS --> COMPLETED: Finalize (Requires workDone, finalCost > 0, completedAt, finalMileage >= initial; Vehicle -> AVAILABLE & updates odometer)
-    IN_PROGRESS --> CANCELLED: Cancel Job (Transaction: Vehicle resets to AVAILABLE)
-    COMPLETED --> [*]: Terminal State (Immutable historical record)
-    CANCELLED --> [*]: Terminal State (Cannot transition to IN_PROGRESS or COMPLETED)
+    direction LR
+    [*] --> SCHEDULED: Create Job
+    SCHEDULED --> IN_PROGRESS: Start Work
+    SCHEDULED --> CANCELLED: Cancel Job
+    IN_PROGRESS --> COMPLETED: Finalize Work
+    IN_PROGRESS --> CANCELLED: Cancel Job
+    COMPLETED --> [*]
+    CANCELLED --> [*]
 ```
+
+### State Machine Transition Rules & Invariants
+
+| From State | To State | Trigger | Invariants & Transactional Side Effects |
+| :--- | :--- | :--- | :--- |
+| `[*]` | `SCHEDULED` | `POST /maintenances` | Vehicle must be `AVAILABLE`; Mechanic & Workshop must be `ACTIVE`; verifies interval schedule overlap `[S_A, E_A)`. |
+| `SCHEDULED` | `IN_PROGRESS` | `PATCH /maintenances/:id/status` | **Atomic ACID transaction:** transitions Maintenance to `IN_PROGRESS` and Vehicle to `IN_MAINTENANCE`. |
+| `SCHEDULED` | `CANCELLED` | `PATCH /maintenances/:id/status` | Terminal state. Vehicle remains `AVAILABLE`. |
+| `IN_PROGRESS` | `COMPLETED` | `PATCH /maintenances/:id/status` | **Atomic ACID transaction:** Requires `workDone`, `finalCost > 0`, `completedAt`, and `finalMileage >= initialMileage`. Resets Vehicle to `AVAILABLE` and synchronizes odometer. |
+| `IN_PROGRESS` | `CANCELLED` | `PATCH /maintenances/:id/status` | **Atomic ACID transaction:** transitions Maintenance to `CANCELLED` and resets Vehicle to `AVAILABLE`. Terminal state. |
+| `COMPLETED` | `[*]` | Immutable | Permanent audit record. Further status transitions are rejected with `HTTP 400 Bad Request`. |
 
 ---
 
