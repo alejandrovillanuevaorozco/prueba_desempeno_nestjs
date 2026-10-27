@@ -103,15 +103,22 @@ export class AuthService {
   }
 
   /**
-   * I handle OAuth 2.0 user integration (Find or Register).
-   * If a user with this email exists, I verify they are active and issue a JWT.
-   * If not, I seamlessly register them with TECHNICIAN role and issue a JWT.
+   * I handle OAuth 2.0 user integration following the Find-or-Register design pattern.
+   * 
+   * Architectural Flow:
+   * 1. I query the database to determine if a user with the OAuth email already exists.
+   * 2. If the user does not exist, I automatically provision a new account in PostgreSQL,
+   *    assigning a secure bcrypt-hashed random password and the default TECHNICIAN role.
+   * 3. I ensure the account is active; if an administrator deactivated it, I abort with 401.
+   * 4. I assemble the JWT claims payload with the user's primary key, email, and role.
+   * 5. I sign and deliver an official FleetCore JWT access token identical to standard login.
    */
   async validateOAuthUser(email: string, name?: string) {
+    // 1. I check whether the user already exists in our database
     let user = await this.usersService.findByEmail(email);
 
+    // 2. If not found, I auto-provision their account with a secure temporary password and TECHNICIAN role
     if (!user) {
-      // User does not exist yet: I auto-provision them with a secure random password and TECHNICIAN role
       const randomPassword = Math.random().toString(36).slice(-10) + '!A1b';
       const hashedPassword = await bcrypt.hash(randomPassword, 10);
       user = await this.usersService.create({
@@ -121,18 +128,22 @@ export class AuthService {
       });
     }
 
+    // 3. I verify that the account has not been deactivated by an administrator
     if (!user.isActive) {
       throw new UnauthorizedException('User account has been deactivated');
     }
 
+    // 4. I prepare the JWT payload with subject ID, verified email, and assigned role
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       role: user.role,
     };
 
+    // 5. I cryptographically sign the JWT access token using our secret key
     const accessToken = this.jwtService.sign(payload);
 
+    // 6. I return the signed token and the sanitized user session profile
     return {
       accessToken,
       user: {
