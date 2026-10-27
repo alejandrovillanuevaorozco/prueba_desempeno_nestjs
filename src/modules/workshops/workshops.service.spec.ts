@@ -55,6 +55,28 @@ describe('WorkshopsService', () => {
     });
   });
 
+  it('should find a workshop by id', async () => {
+    const workshop = { id: 'w-1', name: 'Taller Central', status: Status.ACTIVE };
+    mockWorkshopRepo.findOne.mockResolvedValue(workshop);
+
+    const result = await service.findById('w-1');
+    expect(result.id).toBe('w-1');
+  });
+
+  it('should throw NotFoundException if workshop does not exist', async () => {
+    mockWorkshopRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.findById('w-404')).rejects.toThrow(NotFoundException);
+  });
+
+  it('should update workshop fields', async () => {
+    const workshop = { id: 'w-1', name: 'Taller Central', status: Status.ACTIVE };
+    mockWorkshopRepo.findOne.mockResolvedValue(workshop);
+
+    const result = await service.update('w-1', { name: 'Taller Central Modificado' });
+    expect(mockWorkshopRepo.save).toHaveBeenCalled();
+  });
+
   it('should inactivate a workshop without deleting records', async () => {
     const workshop = { id: 'w-1', name: 'Taller Norte', status: Status.ACTIVE };
     mockWorkshopRepo.findOne.mockResolvedValue(workshop);
@@ -62,5 +84,14 @@ describe('WorkshopsService', () => {
     const result = await service.inactivate('w-1');
 
     expect(result.status).toBe(Status.INACTIVE);
+  });
+
+  it('should reactivate an inactive workshop', async () => {
+    const workshop = { id: 'w-1', name: 'Taller Norte', status: Status.INACTIVE };
+    mockWorkshopRepo.findOne.mockResolvedValue(workshop);
+
+    const result = await service.activate('w-1');
+
+    expect(result.status).toBe(Status.ACTIVE);
   });
 });

@@ -60,6 +60,48 @@ describe('VehiclesService', () => {
     ).rejects.toThrow(ConflictException);
   });
 
+  it('should list all vehicles with optional status filter', async () => {
+    mockVehicleRepo.find.mockResolvedValue([{ id: 'v-1', plate: 'ABC123' }]);
+
+    const result = await service.findAll(VehicleStatus.AVAILABLE);
+    expect(result).toHaveLength(1);
+    expect(mockVehicleRepo.find).toHaveBeenCalledWith({
+      where: { status: VehicleStatus.AVAILABLE },
+      order: { createdAt: 'DESC' },
+    });
+  });
+
+  it('should find vehicle by valid UUID', async () => {
+    const validUuid = '12345678-1234-4234-8234-123456789abc';
+    const vehicle = { id: validUuid, plate: 'ABC123' };
+    mockVehicleRepo.findOne.mockResolvedValue(vehicle);
+
+    const result = await service.findByIdOrPlate(validUuid);
+    expect(result.id).toBe(validUuid);
+  });
+
+  it('should find vehicle by plate string', async () => {
+    const vehicle = { id: 'v-1', plate: 'ABC123' };
+    mockVehicleRepo.findOne.mockResolvedValue(vehicle);
+
+    const result = await service.findByIdOrPlate('abc123');
+    expect(result.plate).toBe('ABC123');
+  });
+
+  it('should throw NotFoundException if vehicle does not exist', async () => {
+    mockVehicleRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.findByIdOrPlate('UNKNOWN')).rejects.toThrow(NotFoundException);
+  });
+
+  it('should update vehicle attributes', async () => {
+    const vehicle = { id: 'v-1', plate: 'ABC123', mileage: 45000 };
+    mockVehicleRepo.findOne.mockResolvedValue(vehicle);
+
+    const result = await service.update('v-1', { mileage: 50000 });
+    expect(mockVehicleRepo.save).toHaveBeenCalled();
+  });
+
   it('should logically inactivate a vehicle without deleting data', async () => {
     const vehicle = { id: 'v-1', plate: 'ABC123', status: VehicleStatus.AVAILABLE };
     mockVehicleRepo.findOne.mockResolvedValue(vehicle);

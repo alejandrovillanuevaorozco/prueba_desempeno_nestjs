@@ -56,6 +56,59 @@ describe('MechanicsService', () => {
     ).rejects.toThrow(ConflictException);
   });
 
+  it('should list all mechanics with optional status filtering', async () => {
+    mockMechanicRepo.find.mockResolvedValue([{ id: 'm-1', name: 'Carlos' }]);
+
+    const result = await service.findAll(Status.ACTIVE);
+
+    expect(result).toHaveLength(1);
+    expect(mockMechanicRepo.find).toHaveBeenCalledWith({
+      where: { status: Status.ACTIVE },
+      relations: { user: true },
+      order: { createdAt: 'DESC' },
+    });
+  });
+
+  it('should find mechanic by id', async () => {
+    const mockMechanic = { id: 'm-1', name: 'Carlos', status: Status.ACTIVE };
+    mockMechanicRepo.findOne.mockResolvedValue(mockMechanic);
+
+    const result = await service.findById('m-1');
+    expect(result.id).toBe('m-1');
+  });
+
+  it('should throw NotFoundException if mechanic not found by id', async () => {
+    mockMechanicRepo.findOne.mockResolvedValue(null);
+
+    await expect(service.findById('m-404')).rejects.toThrow(NotFoundException);
+  });
+
+  it('should find mechanic by linked user id', async () => {
+    mockMechanicRepo.findOne.mockResolvedValue({ id: 'm-1', userId: 'u-1' });
+
+    const result = await service.findByUserId('u-1');
+    expect(result?.userId).toBe('u-1');
+  });
+
+  it('should update mechanic details', async () => {
+    const existing = { id: 'm-1', name: 'Carlos', email: 'carlos@fleetcore.com', status: Status.ACTIVE };
+    mockMechanicRepo.findOne.mockResolvedValue(existing);
+
+    const updated = await service.update('m-1', { name: 'Carlos Updated' });
+    expect(mockMechanicRepo.save).toHaveBeenCalled();
+  });
+
+  it('should throw ConflictException if updating to an email already in use', async () => {
+    const existing = { id: 'm-1', name: 'Carlos', email: 'carlos@fleetcore.com' };
+    mockMechanicRepo.findOne
+      .mockResolvedValueOnce(existing) // findById
+      .mockResolvedValueOnce({ id: 'other-m', email: 'taken@fleetcore.com' }); // uniqueness check
+
+    await expect(
+      service.update('m-1', { email: 'taken@fleetcore.com' }),
+    ).rejects.toThrow(ConflictException);
+  });
+
   it('should inactivate a mechanic without deleting historical records', async () => {
     const mechanic = { id: 'm-1', name: 'Carlos', status: Status.ACTIVE };
     mockMechanicRepo.findOne.mockResolvedValue(mechanic);
@@ -63,5 +116,14 @@ describe('MechanicsService', () => {
     const result = await service.inactivate('m-1');
 
     expect(result.status).toBe(Status.INACTIVE);
+  });
+
+  it('should reactivate a mechanic', async () => {
+    const mechanic = { id: 'm-1', name: 'Carlos', status: Status.INACTIVE };
+    mockMechanicRepo.findOne.mockResolvedValue(mechanic);
+
+    const result = await service.activate('m-1');
+
+    expect(result.status).toBe(Status.ACTIVE);
   });
 });
