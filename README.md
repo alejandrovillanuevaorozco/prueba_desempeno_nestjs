@@ -30,21 +30,143 @@
 
 ---
 
-## 2. Technical Defense & Concurrency Analysis (Viva Cheatsheet)
+## 2. System Architecture & Project Directory Tree
 
-### 2.1 Race Conditions in Mechanic Assignment (Double-Booking)
+### 2.1 Layered Architecture Diagram
+
+The platform follows clean layered architecture principles, decoupling presentation, cross-cutting concerns, business rules, and relational persistence:
+
+```mermaid
+flowchart TD
+    Client["Client Application / External B2B Partner / Web Browser"]
+
+    subgraph Presentation["1. Presentation & Gateway Layer"]
+        Swagger["Swagger UI / OpenAPI Documentation"]
+        Transform["TransformInterceptor (Uniform JSON Envelope)"]
+        Filter["HttpExceptionFilter (PostgreSQL Error Translation)"]
+        Guards["Security Guards: JwtAuthGuard, RolesGuard, ApiKeyGuard, GithubAuthGuard"]
+        Pipes["ValidationPipes (DTOs with class-validator & class-transformer)"]
+        Controllers["Controllers: Auth, Vehicles, Mechanics, Workshops, Maintenances, External"]
+    end
+
+    subgraph Domain["2. Domain & Business Logic Layer"]
+        AuthSvc["AuthService (Bcrypt Hashing, JWT Issuance, OAuth Auto-provisioning)"]
+        VehiclesSvc["VehiclesService (Odometer Consistency, Plate Normalization)"]
+        MechanicsSvc["MechanicsService (Specialty Verification & Logical Inactivation)"]
+        WorkshopsSvc["WorkshopsService (Active Status Verification & Maintenance Linking)"]
+        MaintSvc["MaintenancesService (State Machine, Schedule Overlap [S,E), Pessimistic Lock)"]
+    end
+
+    subgraph Persistence["3. Persistence & Transaction Layer"]
+        TypeORM["TypeORM DataSource (ACID Atomic Transactions)"]
+        Entities["Entities: User, Vehicle, Mechanic, Workshop, Maintenance"]
+        Locks["PostgreSQL PESSIMISTIC_WRITE Row Locks"]
+    end
+
+    subgraph Storage["4. Database Engine"]
+        Postgres[("PostgreSQL 15 Database")]
+    end
+
+    Client -->|HTTP / REST Request| Transform
+    Transform --> Guards
+    Guards --> Pipes
+    Pipes --> Controllers
+    Controllers --> Domain
+    Domain --> Persistence
+    Persistence --> Storage
+    Filter -.->|Captures Exceptions & Normalizes Error Response| Client
+```
+
+### 2.2 Project Directory Tree
+
+The codebase is organized into modular feature domains following standard NestJS enterprise directory conventions:
+
+```text
+prueba_desempeno_nestjs/
+├── docker-compose.yml              # Container orchestration (PostgreSQL 15 + NestJS API)
+├── Dockerfile                      # Multi-stage production container build (Node 20 Slim)
+├── fleetcore_dump.sql              # Pristine PostgreSQL dump with full DDL and seed records
+├── package.json                    # Project dependencies, Jest configuration & npm scripts
+├── tsconfig.json                   # TypeScript ECMAScript Next configuration
+├── .env.example                    # Template environment variables with dummy values
+├── README.md                       # Comprehensive documentation & technical viva cheatsheet
+├── docs/                           # Evidence screenshots (Jest coverage, Swagger executions)
+│   ├── Pruebas unitarias jest.png  # Unit test run evidence (> 80% coverage)
+│   ├── login.png                   # Successful JWT authentication
+│   ├── profile.png                 # Authenticated user profile retrieval
+│   ├── register.png                # User registration
+│   └── register_vehicle.png        # Vehicle inventory creation
+└── src/
+    ├── main.ts                     # Application entry point, Swagger setup & global filters
+    ├── app.module.ts               # Root module orchestrating feature domains & TypeORM config
+    ├── common/                     # Cross-cutting infrastructure & shared abstractions
+    │   ├── decorators/             # Custom decorators (@Roles, @Public, @CurrentUser)
+    │   ├── enums/                  # Domain enums (Role, Status, VehicleStatus, MaintenanceStatus)
+    │   ├── filters/                # Global HttpExceptionFilter (translates PG 23505/23503 to HTTP)
+    │   ├── guards/                 # Authentication/Authorization guards (JWT, Roles, API Key, GitHub)
+    │   ├── interceptors/           # TransformInterceptor (standardizes {success, statusCode, data})
+    │   └── interfaces/             # Shared TypeScript interfaces (JwtPayload)
+    ├── config/
+    │   └── database.config.ts      # TypeORM connection options with ConfigService
+    ├── modules/                    # Feature domain modules
+    │   ├── auth/                   # Authentication & Identity Management
+    │   │   ├── dto/                # LoginDto, RegisterDto
+    │   │   ├── strategies/         # JwtStrategy, GithubStrategy (OAuth 2.0)
+    │   │   ├── auth.controller.ts  # Endpoints: /auth/login, /auth/register, /auth/github
+    │   │   ├── auth.service.ts     # Bcrypt verification, JWT signing, OAuth Find-or-Register
+    │   │   └── auth.service.spec.ts# Unit tests for local & OAuth 2.0 authentication
+    │   ├── external/               # B2B Third-Party Partner Integration
+    │   │   ├── external.controller.ts # Secured via x-api-key header (/external/vehicles/:plate/history)
+    │   │   └── external.module.ts
+    │   ├── maintenances/           # Fleet Maintenance Management (Core Domain)
+    │   │   ├── dto/                # CreateMaintenanceDto, UpdateMaintenanceStatusDto
+    │   │   ├── entities/           # Maintenance entity with relations & composite indexes
+    │   │   ├── maintenances.controller.ts # Maintenance CRUD & state transitions
+    │   │   ├── maintenances.service.ts    # Pessimistic locking, ACID transactions, interval validation
+    │   │   └── maintenances.service.spec.ts# Unit tests for state machine & schedule conflict rules
+    │   ├── mechanics/              # Technician & Mechanic Management
+    │   │   ├── dto/                # CreateMechanicDto, UpdateMechanicDto
+    │   │   ├── entities/           # Mechanic entity linked to User
+    │   │   ├── mechanics.controller.ts
+    │   │   ├── mechanics.service.ts
+    │   │   └── mechanics.service.spec.ts
+    │   ├── users/                  # User Account Persistence
+    │   │   ├── entities/           # User entity (ADMIN, TECHNICIAN roles)
+    │   │   ├── users.service.ts    # User lookups & lowercase email normalization
+    │   │   └── users.service.spec.ts
+    │   ├── vehicles/               # Fleet Vehicle Inventory
+    │   │   ├── dto/                # CreateVehicleDto, UpdateVehicleDto
+    │   │   ├── entities/           # Vehicle entity with plate normalization & odometer tracking
+    │   │   ├── vehicles.controller.ts
+    │   │   ├── vehicles.service.ts # Vehicle CRUD, logical inactivation, dual lookup (UUID/Plate)
+    │   │   └── vehicles.service.spec.ts
+    │   └── workshops/              # Workshop Facilities
+    │       ├── dto/                # CreateWorkshopDto, UpdateWorkshopDto
+    │       ├── entities/           # Workshop entity
+    │       ├── workshops.controller.ts
+    │       ├── workshops.service.ts# Workshop status management & active queries
+    │       └── workshops.service.spec.ts
+    └── seeds/
+        └── seed.ts                 # Idempotent database initialization script (npm run seed)
+```
+
+---
+
+## 3. Technical Defense & Concurrency Analysis (Viva Cheatsheet)
+
+### 3.1 Race Conditions in Mechanic Assignment (Double-Booking)
 * **The Risk:** If two managers simultaneously schedule maintenance for the same technician at the exact same millisecond, concurrent queries would both see zero active jobs for that technician, allowing both transactions to insert and double-book the technician.
 * **The Solution:** The system implements **Pessimistic Locking** (`setLock('pessimistic_write')`) on the `Mechanic` record within a database transaction. The first request locks the row; the second request is forced to wait until the first commits. Upon acquiring the lock, the second transaction re-evaluates active jobs, detects the newly scheduled job, and immediately aborts with `HTTP 409 Conflict`. Additionally, composite index `(mechanic_id, status)` optimizes query lookup time to $O(1)$.
 
-### 2.2 ACID Transactions in State Changes
+### 3.2 ACID Transactions in State Changes
 * **The Risk:** Advancing a maintenance to `IN_PROGRESS` requires simultaneously changing the vehicle status to `IN_MAINTENANCE` (or to `AVAILABLE` upon `COMPLETED`). Without transactional boundaries, a network blip or constraint violation on the second update would leave the vehicle marked `AVAILABLE` while work is actively being performed.
 * **The Solution:** Both entity updates are executed inside an atomic transaction managed by TypeORM. If any step fails (e.g. invalid final mileage or missing closure fields), `rollbackTransaction()` is executed automatically, ensuring total state consistency.
 
-### 2.3 Idempotency in Database Seeding
+### 3.3 Idempotency in Database Seeding
 * **The Risk:** Executing `npm run seed` multiple times in CI/CD or local setup could generate duplicate entries or abort with uniqueness violations (`23505`).
 * **The Solution:** All seeder routines verify natural unique keys (`email` for users and mechanics, `plate` for vehicles) prior to insertion or update existing records. Executing the script once or ten times yields the exact same deterministic dataset.
 
-### 2.4 Live Changes & Layer Selection in NestJS
+### 3.4 Live Changes & Layer Selection in NestJS
 * **DTOs & Validation Pipes:** Structural payload checks, types, enums, min/max ranges (`class-validator`).
 * **Guards:** Authentication (`JwtAuthGuard`, `ApiKeyGuard`) and Authorization (`RolesGuard`).
 * **Interceptors:** Uniform success response wrapping (`TransformInterceptor`).
@@ -54,7 +176,7 @@
 
 ---
 
-## 3. Maintenance State Machine
+## 4. Maintenance State Machine
 
 ```mermaid
 stateDiagram-v2
@@ -69,7 +191,7 @@ stateDiagram-v2
 
 ---
 
-## 4. Quick Start with Docker (Recommended)
+## 5. Quick Start with Docker (Recommended)
 
 ### Prerequisites
 * Docker Engine 20+
@@ -105,7 +227,7 @@ docker compose down
 
 ---
 
-## 5. Local Development Setup (Without Docker)
+## 6. Local Development Setup (Without Docker)
 
 ### Prerequisites
 * Node.js v20.x or v22.x
@@ -146,7 +268,7 @@ docker compose down
 
 ---
 
-## 6. Seed Data & Test Credentials
+## 7. Seed Data & Test Credentials
 
 The database seeder (`npm run seed`) provisions the mandatory baseline dataset:
 
@@ -184,7 +306,7 @@ The database seeder (`npm run seed`) provisions the mandatory baseline dataset:
 
 ---
 
-## 7. Interactive API Documentation (Swagger)
+## 8. Interactive API Documentation (Swagger)
 
 Full interactive OpenAPI / Swagger UI is available at:
 
@@ -198,7 +320,7 @@ Full interactive OpenAPI / Swagger UI is available at:
 
 ---
 
-## 8. External Integration (`x-api-key`)
+## 9. External Integration (`x-api-key`)
 
 External partners can query vehicle status and completed maintenance history via header authentication without needing a JWT session:
 
@@ -250,7 +372,7 @@ curl -X GET "http://localhost:3000/external/vehicles/ABC123/history" \
 
 ---
 
-## 9. OAuth 2.0 Integration (GitHub) — 10 Bonus Points
+## 10. OAuth 2.0 Integration (GitHub) — 10 Bonus Points
 
 The API includes native **OAuth 2.0** authentication delegating identity verification to **GitHub**:
 
@@ -270,7 +392,7 @@ GITHUB_CALLBACK_URL=http://localhost:3000/auth/github/callback
 
 ---
 
-## 10. Automated Testing & Code Coverage (Jest) — 5 Bonus Points
+## 11. Automated Testing & Code Coverage (Jest) — 5 Bonus Points
 
 The project includes **52 comprehensive unit tests across 6 test suites**, verifying domain invariants, concurrency locks, state machine transitions, and interval schedule calculations.
 
@@ -303,7 +425,7 @@ npm run test:cov
 
 ---
 
-## 11. Core RESTful Endpoints Reference
+## 12. Core RESTful Endpoints Reference
 
 | Method | Endpoint | Access Role | Description |
 | :--- | :--- | :---: | :--- |
@@ -338,6 +460,6 @@ npm run test:cov
 
 ---
 
-## 12. Git Commit History & Best Practices
+## 13. Git Commit History & Best Practices
 
 All changes follow conventional commit standards (`feat:`, `fix:`, `test:`, `docs:`, `chore:`) to ensure clean git traceability.
